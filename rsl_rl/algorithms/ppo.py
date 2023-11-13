@@ -29,6 +29,7 @@ class PPO:
         use_clipped_value_loss=True,
         schedule="fixed",
         desired_kl=0.01,
+        weight_decay=0.0,
         device="cpu",
     ):
         self.device = device
@@ -41,7 +42,7 @@ class PPO:
         self.actor_critic = actor_critic
         self.actor_critic.to(self.device)
         self.storage = None  # initialized later
-        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
+        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate, weight_decay=weight_decay)
         self.transition = RolloutStorage.Transition()
 
         # PPO parameters
