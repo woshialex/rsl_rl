@@ -11,7 +11,7 @@ from torch import nn
 class EmpiricalNormalization(nn.Module):
     """Normalize mean and variance of values based on empirical values."""
 
-    def __init__(self, shape, eps=1e-2, until=None):
+    def __init__(self, shape, eps=1e-2, decay=0.995):
         """Initialize EmpiricalNormalization module.
 
         Args:
@@ -22,11 +22,10 @@ class EmpiricalNormalization(nn.Module):
         """
         super().__init__()
         self.eps = eps
-        self.until = until
+        self.decay = decay
         self.register_buffer("_mean", torch.zeros(shape).unsqueeze(0))
         self.register_buffer("_var", torch.ones(shape).unsqueeze(0))
         self.register_buffer("_std", torch.ones(shape).unsqueeze(0))
-        self.count = 0
 
     @property
     def mean(self):
@@ -53,20 +52,12 @@ class EmpiricalNormalization(nn.Module):
     @torch.jit.unused
     def update(self, x):
         """Learn input values without computing the output values of them"""
-
-        if self.until is not None and self.count >= self.until:
-            return
-
-        count_x = x.shape[0]
-        self.count += count_x
-        rate = count_x / self.count
-
-        var_x = torch.var(x, dim=0, unbiased=False, keepdim=True)
+        
         mean_x = torch.mean(x, dim=0, keepdim=True)
-        delta_mean = mean_x - self._mean
-        self._mean += rate * delta_mean
-        self._var += rate * (var_x - self._var + delta_mean * (mean_x - self._mean))
-        self._std = torch.sqrt(self._var)
+        self._mean = self._mean * self.decay + (1.0 - self.decay) * mean_x
+        var_x = torch.mean(x**2, dim=0, keepdim=True)
+        self._var = self._var * self.decay + (1.0 - self.decay) * var_x 
+        self._std = torch.sqrt(self._var - self._mean**2 + self.eps)
 
     @torch.jit.unused
     def inverse(self, y):
