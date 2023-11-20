@@ -61,12 +61,11 @@ class EmpiricalNormalization(nn.Module):
         self.count += count_x
         rate = count_x / self.count
 
-        var_x = torch.var(x, dim=0, unbiased=False, keepdim=True)
+        var_x = torch.mean(x**2, dim=0, keepdim=True)
         mean_x = torch.mean(x, dim=0, keepdim=True)
-        delta_mean = mean_x - self._mean
-        self._mean += rate * delta_mean
-        self._var += rate * (var_x - self._var + delta_mean * (mean_x - self._mean))
-        self._std = torch.sqrt(self._var)
+        self._mean += rate * (mean_x - self._mean)
+        self._var += rate * (var_x - self._var)
+        self._std = torch.sqrt(self._var - self._mean * self._mean + self.eps)
 
     @torch.jit.unused
     def inverse(self, y):
