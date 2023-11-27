@@ -6,7 +6,23 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from torch.distributions import Normal
+from torch.distributions import Normal, Cauchy
+
+def normal_kl(sigma_batch, mu_batch, old_sigma_batch,old_mu_batch):
+    kl = torch.sum(
+        torch.log(sigma_batch / old_sigma_batch + 1.0e-5)
+        + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch))
+        / (2.0 * torch.square(sigma_batch))
+        - 0.5,
+        axis=-1,
+    )
+    return kl
+
+def cauchy_kl(sigma_batch, mu_batch, old_sigma_batch,old_mu_batch):
+    kl = torch.sum(torch.log((torch.square(sigma_batch + old_sigma_batch) + torch.square(old_mu_batch - mu_batch))
+        / (4.0 * sigma_batch * old_sigma_batch)),
+        axis=-1)
+    return kl
 
 
 class ActorCritic(nn.Module):
@@ -21,6 +37,7 @@ class ActorCritic(nn.Module):
         critic_hidden_dims=[256, 256, 256],
         activation="elu",
         init_noise_std=1.0,
+        func_type = "guassian",
         **kwargs,
     ):
         if kwargs:
@@ -56,6 +73,14 @@ class ActorCritic(nn.Module):
                 critic_layers.append(nn.Linear(critic_hidden_dims[layer_index], critic_hidden_dims[layer_index + 1]))
                 critic_layers.append(activation)
         self.critic = nn.Sequential(*critic_layers)
+        if func_type == "guassian":
+            self._dis = Normal
+            self.KL = normal_kl
+        elif func_type == "cauchy":
+            self._dis = Cauchy
+            self.KL = cauchy_kl
+        else:
+            raise Exception("not implemented! ", func_type)
 
         print(f"Actor MLP: {self.actor}")
         print(f"Critic MLP: {self.critic}")
@@ -64,7 +89,8 @@ class ActorCritic(nn.Module):
         self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
         self.distribution = None
         # disable args validation for speedup
-        Normal.set_default_validate_args = False
+        # Normal.set_default_validate_args = False
+        self._dis.set_default_validate_args = False
 
         # seems that we get better performance without init
         # self.init_memory_weights(self.memory_a, 0.001, 0.)
@@ -90,7 +116,8 @@ class ActorCritic(nn.Module):
 
     @property
     def action_std(self):
-        return self.distribution.stddev
+        #return self.distribution.stddev
+        return self.std
 
     @property
     def entropy(self):
@@ -98,7 +125,7 @@ class ActorCritic(nn.Module):
 
     def update_distribution(self, observations):
         mean = self.actor(observations)
-        self.distribution = Normal(mean, mean * 0.0 + self.std)
+        self.distribution = self._dis(mean,  self.std)
 
     def act(self, observations, **kwargs):
         self.update_distribution(observations)

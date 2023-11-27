@@ -131,13 +131,7 @@ class PPO:
             # KL
             if self.desired_kl is not None and self.schedule == "adaptive":
                 with torch.inference_mode():
-                    kl = torch.sum(
-                        torch.log(sigma_batch / old_sigma_batch + 1.0e-5)
-                        + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch))
-                        / (2.0 * torch.square(sigma_batch))
-                        - 0.5,
-                        axis=-1,
-                    )
+                    kl = self.actor_critic.KL(sigma_batch, mu_batch, old_sigma_batch, old_mu_batch)
                     kl_mean = torch.mean(kl)
 
                     if kl_mean > self.desired_kl * 2.0:
